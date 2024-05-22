@@ -7,11 +7,10 @@ import (
 	"strings"
 )
 
-func GetPath(request string) string {
+func GetPath(request string) []string {
 	path := strings.Split(request, " ")
-	paths := strings.Split(path[1], "/")
-	fmt.Println(paths)
-	return "asdf"
+	path = strings.Split(path[1], "/")
+	return path
 }
 
 func main() {
@@ -32,11 +31,22 @@ func main() {
 
 	conn.Read(buffer)
 
-	fmt.Println(string(buffer))
-	_ = GetPath(string(buffer))
-	if strings.Split(string(buffer), " ")[1] == "/" {
-		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+	path := GetPath(string(buffer))
+	fmt.Println(path)
+	fmt.Println(len(path))
+	if len(path) == 2 {
+		fmt.Println("111")
+		if path[1] != "" {
+			conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		} else {
+			conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		}
+	} else if path[1] == "echo" {
+		fmt.Println("222")
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %v\r\n\r\n%v", len(path[2]), path[2])))
 	} else {
+		// conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		fmt.Println("404")
 		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 	}
 	// if string(buffer).split()
