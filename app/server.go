@@ -22,7 +22,6 @@ func GetHeaders(request string) map[string]string {
 		value := strings.Split(header, ":")[1]
 		headersMap[key] = strings.TrimSpace(value)
 	}
-	// fmt.Println(headersMap)
 	return headersMap
 }
 
@@ -44,8 +43,6 @@ func main() {
 
 	path := GetPath(string(buffer))
 	headers := GetHeaders(string(buffer))
-	// fmt.Println(path)
-	// fmt.Println(len(path))
 	switch path[0] {
 	case "":
 		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
