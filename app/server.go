@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// type Request struct {
+// 	path string
+// }
+
 func GetPath(request string) []string {
 	path := strings.Split(request, " ")
 	path = strings.Split(path[1], "/")
@@ -25,18 +29,7 @@ func GetHeaders(request string) map[string]string {
 	return headersMap
 }
 
-func main() {
-	l, err := net.Listen("tcp", "localhost:4221")
-	if err != nil {
-		fmt.Println("Failed to bind to port 4221")
-		os.Exit(1)
-	}
-
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
+func handleConnection(conn net.Conn) {
 	buffer := make([]byte, 1024)
 
 	conn.Read(buffer)
@@ -53,4 +46,23 @@ func main() {
 	default:
 		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 	}
+}
+
+func main() {
+	l, err := net.Listen("tcp", "localhost:4221")
+	if err != nil {
+		fmt.Println("Failed to bind to port 4221")
+		os.Exit(1)
+	}
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+		go handleConnection(conn)
+
+	}
+
 }
