@@ -69,8 +69,27 @@ func GetHeaders(request string) map[string]string {
 	return headersMap
 }
 
-func handleFiles(dir string, filename string) ([]byte, error) {
-	slog.Info(fmt.Sprintf("Handle Files: %v%v", dir, filename))
+func writeFile(dir, filename string, body string) error {
+	fmt.Println(body)
+	// fmt.Println([]byte(body))
+	slog.Info(fmt.Sprintf("writing file: %v%v", dir, filename))
+	file, err := os.Create(dir + "/" + filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	fmt.Println(len("grape raspberry orange apple apple grape banana banana"))
+	fmt.Println(len(strings.TrimRight(body, "\x00")))
+	_, err = file.WriteString(strings.TrimRight(body, "\x00"))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readFile(dir string, filename string) ([]byte, error) {
+	slog.Info(fmt.Sprintf("reading file: %v%v", dir, filename))
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return []byte{}, errors.New("dir doesnt exists")
@@ -105,17 +124,30 @@ func (s *Server) handleConnection(conn net.Conn) {
 	case "echo":
 		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %v\r\n\r\n%v", len(path[1]), path[1])))
 	case "files":
-		file, err := handleFiles(s.dir, path[1])
-		if err != nil {
-			if err.Error() == "file not found" {
-				conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		if req.Method == "GET" {
+			file, err := readFile(s.dir, path[1])
+			if err != nil {
+				if err.Error() == "file not found" {
+					conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+					return
+				}
+				conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n\r\nCould not read file"))
 				return
 			}
-			conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n\r\nCould not read file"))
+			conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %v\r\n\r\n%v\r\n\r\n", len(file), string(file))))
+			return
+		} else if req.Method == "POST" {
+			err := writeFile(s.dir, path[1], req.Body)
+			if err != nil {
+				fmt.Println("coudl not write file", err)
+				conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n\r\nCould not write file"))
+				return
+			}
+			fmt.Println("holaaa")
+			conn.Write([]byte(fmt.Sprintf("HTTP/1.1 201 Created\r\n\r\n")))
 			return
 		}
-		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %v\r\n\r\n%v\r\n\r\n", len(file), string(file))))
-		return
+
 	default:
 		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 	}
