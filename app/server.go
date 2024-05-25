@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -16,6 +17,25 @@ type Request struct {
 	Headers map[string]string
 	Method  string
 	Body    string
+}
+
+type Response struct {
+	Status  string
+	Headers map[string]string
+	Body    string
+}
+
+func (r *Response) Deserialize() []byte {
+	var resp string
+	resp += "HTTP/1.1 "
+	resp += r.Status + "\r\n"
+	for key, value := range r.Headers {
+		// fmt.Println(key)
+		// fmt.Println(value)
+		resp += fmt.Sprintf("%v: %v\r\n", key, value)
+	}
+	resp += "\r\n" + r.Body
+	return []byte(resp)
 }
 
 type Server struct {
@@ -108,21 +128,46 @@ func readFile(dir string, filename string) ([]byte, error) {
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
+
 	buffer := make([]byte, 1024)
 
 	conn.Read(buffer)
+	defer conn.Close()
 
 	req := ParseRequest(string(buffer))
 	slog.Info(fmt.Sprintf("Request: %v /%v", req.Method, req.Path))
 	path := strings.Split(req.Path, "/")
-	headers := GetHeaders(string(buffer))
+	// headers := GetHeaders(string(buffer))
+
 	switch path[0] {
 	case "":
-		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		resp := Response{Status: "200 OK", Body: "", Headers: map[string]string{}}
+		conn.Write(resp.Deserialize())
+		return
+		// conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 	case "user-agent":
-		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %v\r\n\r\n%v", len(headers["User-Agent"]), headers["User-Agent"])))
+		resp := Response{Status: "200 OK", Body: req.Headers["User-Agent"], Headers: map[string]string{
+			"Content-Type":   "text/plain",
+			"Content-Length": strconv.Itoa(len(req.Headers["User-Agent"])),
+		}}
+		conn.Write(resp.Deserialize())
+		return
+		// conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %v\r\n\r\n%v", len(headers["User-Agent"]), headers["User-Agent"])))
 	case "echo":
-		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %v\r\n\r\n%v", len(path[1]), path[1])))
+		responseHeaders := map[string]string{
+			"Content-Type":   "text/plain",
+			"Content-Length": strconv.Itoa(len(path[1])),
+		}
+
+		if v, ok := req.Headers["Accept-Encoding"]; ok {
+			if v == "gzip" {
+				responseHeaders["Content-Encoding"] = "gzip"
+			}
+		}
+		resp := Response{Status: "200 OK", Body: path[1], Headers: responseHeaders}
+		conn.Write(resp.Deserialize())
+		return
+		// conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %v\r\n\r\n%v", len(path[1]), path[1])))
 	case "files":
 		if req.Method == "GET" {
 			file, err := readFile(s.dir, path[1])
@@ -139,11 +184,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		} else if req.Method == "POST" {
 			err := writeFile(s.dir, path[1], req.Body)
 			if err != nil {
-				fmt.Println("coudl not write file", err)
+				fmt.Println("could not write file", err)
 				conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n\r\nCould not write file"))
 				return
 			}
-			fmt.Println("holaaa")
 			conn.Write([]byte(fmt.Sprintf("HTTP/1.1 201 Created\r\n\r\n")))
 			return
 		}
