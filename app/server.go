@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -11,6 +13,18 @@ import (
 
 	"github.com/pkg/errors"
 )
+
+// func compressString(str string) (string, error) {
+// 	var buffer bytes.Buffer
+// 	gzipWriter := gzip.NewWriter(&buffer)
+// 	gzipWriter.Write([]byte(str))
+// 	gzipWriter.Close()
+// 	// fmt.Println(string(buffer.Bytes()))
+// 	// return string(buffer.Bytes()), nil
+// 	// fmt.Println(hex.EncodeToString(buffer.Bytes()))
+// 	// return hex.EncodeToString(buffer.Bytes()), nil
+
+// }
 
 type Request struct {
 	Path    string
@@ -25,6 +39,24 @@ type Response struct {
 	Body    string
 }
 
+func gzipResponse(conn net.Conn, body string) {
+	var buf bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buf)
+	_, err := gzipWriter.Write([]byte(body))
+	if err != nil {
+		error_string := fmt.Sprintf("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len("Error compressing string"), "Error compressing string")
+		conn.Write([]byte(error_string))
+	}
+	err = gzipWriter.Close()
+	if err != nil {
+		error_string := fmt.Sprintf("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len("Error compressing string"), "Error compressing string")
+		conn.Write([]byte(error_string))
+	}
+	compressedBody := buf.Bytes()
+	response_str := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(compressedBody), compressedBody)
+	conn.Write([]byte(response_str))
+}
+
 func (r *Response) Deserialize() []byte {
 	var resp string
 	resp += "HTTP/1.1 "
@@ -34,7 +66,37 @@ func (r *Response) Deserialize() []byte {
 		// fmt.Println(value)
 		resp += fmt.Sprintf("%v: %v\r\n", key, value)
 	}
-	resp += "\r\n" + r.Body
+
+	// if v, ok := r.Headers["Content-Encoding"]; ok {
+	// 	switch v {
+	// 	case "gzip":
+	// 		var buf bytes.Buffer
+	// 		gzipWriter := gzip.NewWriter(&buf)
+	// 		_, _ = gzipWriter.Write([]byte(r.Body))
+	// 		// if err != nil {
+	// 		// error_string := fmt.Sprintf("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len("Error compressing string"), "Error compressing string")
+	// 		// }
+	// 		_ = gzipWriter.Close()
+	// 		// if err != nil {
+	// 		// error_string := fmt.Sprintf("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len("Error compressing string"), "Error compressing string")
+	// 		// }
+	// 		compressedBody := buf.Bytes()
+	// 		r.Body = string(compressedBody)
+
+	// 		// var gzipBuf bytes.Buffer
+	// 		// zw := gzip.NewWriter(&gzipBuf)
+	// 		// _, _ = zw.Write([]byte(strings.Trim(r.Body, "")))
+	// 		// _ = zw.Close()
+	// 		// // fmt.Println(gzipBuf.Bytes())
+	// 		// r.Body = string(gzipBuf.Bytes())
+	// 		// // r.Body = hex.EncodeToString(bytes.Trim(gzipBuf.Bytes(), "\x00"))
+	// 		// // r.Headers["Content-Length"] = fmt.Sprintf("%d", gzipBuf.Len())
+	// 		r.Headers["Content-Length"] = fmt.Sprintf("%d", len(compressedBody))
+
+	// 	}
+	// }
+	resp += fmt.Sprintf("\r\n%s", r.Body)
+	fmt.Println(resp)
 	return []byte(resp)
 }
 
@@ -100,8 +162,8 @@ func writeFile(dir, filename string, body string) error {
 		return err
 	}
 	defer file.Close()
-	fmt.Println(len("grape raspberry orange apple apple grape banana banana"))
-	fmt.Println(len(strings.TrimRight(body, "\x00")))
+	// fmt.Println(len("grape raspberry orange apple apple grape banana banana"))
+	// fmt.Println(len(strings.TrimRight(body, "\x00")))
 	_, err = file.WriteString(strings.TrimRight(body, "\x00"))
 	if err != nil {
 		return err
@@ -116,7 +178,7 @@ func readFile(dir string, filename string) ([]byte, error) {
 	if err != nil {
 		return []byte{}, errors.New("dir doesnt exists")
 	}
-	fmt.Println(files)
+	// fmt.Println(files)
 	for _, file := range files {
 		if file.Name() == filename {
 			bytes, err := os.ReadFile(dir + "/" + filename)
@@ -162,19 +224,22 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 
 		if v, ok := req.Headers["Accept-Encoding"]; ok {
-			fmt.Println("2")
 			for _, enc := range strings.Split(strings.ReplaceAll(v, " ", ""), ",") {
-				fmt.Println("3")
-				fmt.Println(enc)
 				if _, ok := s.AllowedEncodings[enc]; ok {
-					fmt.Println("4")
 					responseHeaders["Content-Encoding"] = enc
 					break
 				}
 			}
 
 		}
-		fmt.Println(responseHeaders)
+		// fmt.Println(responseHeaders)
+		//
+		if v, ok := responseHeaders["Content-Encoding"]; ok {
+			if v == "gzip" {
+				gzipResponse(conn, path[1])
+				return
+			}
+		}
 		resp := Response{Status: "200 OK", Body: path[1], Headers: responseHeaders}
 		conn.Write(resp.Deserialize())
 		return
