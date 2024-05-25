@@ -39,7 +39,8 @@ func (r *Response) Deserialize() []byte {
 }
 
 type Server struct {
-	dir string
+	dir              string
+	AllowedEncodings map[string]bool
 }
 
 func ParseRequest(request string) *Request {
@@ -58,7 +59,8 @@ func ParseRequest(request string) *Request {
 
 func NewServer(dir string) *Server {
 	return &Server{
-		dir: dir,
+		dir:              dir,
+		AllowedEncodings: map[string]bool{"gzip": true},
 	}
 }
 func GetMethod(request string) string {
@@ -160,10 +162,19 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 
 		if v, ok := req.Headers["Accept-Encoding"]; ok {
-			if v == "gzip" {
-				responseHeaders["Content-Encoding"] = "gzip"
+			fmt.Println("2")
+			for _, enc := range strings.Split(strings.ReplaceAll(v, " ", ""), ",") {
+				fmt.Println("3")
+				fmt.Println(enc)
+				if _, ok := s.AllowedEncodings[enc]; ok {
+					fmt.Println("4")
+					responseHeaders["Content-Encoding"] = enc
+					break
+				}
 			}
+
 		}
+		fmt.Println(responseHeaders)
 		resp := Response{Status: "200 OK", Body: path[1], Headers: responseHeaders}
 		conn.Write(resp.Deserialize())
 		return
